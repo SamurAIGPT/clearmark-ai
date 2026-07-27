@@ -34,16 +34,23 @@ export async function POST(req) {
       return new NextResponse("Prompt is required", { status: 400 });
     }
 
-    // 1. Deduct credits
-    const cost = config.ai.generationCost || 18;
-    try {
-      await UserService.deductCredits(session.user.id, cost);
-    } catch {
-      return new NextResponse("Insufficient credits", { status: 402 });
+    // Extract custom API Key
+    const headerApiKey = req.headers.get("x-custom-api-key");
+    const customApiKey = headerApiKey || body.customApiKey || session.user.customApiKey || null;
+    const isUsingCustomKey = Boolean(customApiKey && customApiKey.trim().length > 0);
+
+    // 1. Deduct credits if not using custom API key
+    const cost = isUsingCustomKey ? 0 : (config.ai.generationCost || 18);
+    if (!isUsingCustomKey && cost > 0) {
+      try {
+        await UserService.deductCredits(session.user.id, cost);
+      } catch {
+        return new NextResponse("Insufficient credits", { status: 402 });
+      }
     }
 
     // 2. Submit to MuAPI gpt-image-2-image-to-image
-    const apiKey = config.ai.apiKey;
+    const apiKey = isUsingCustomKey ? customApiKey.trim() : config.ai.apiKey;
     let resultImage = "";
     let requestId = `mock_${Date.now()}`;
     let status = "processing";

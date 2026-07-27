@@ -5,36 +5,38 @@ import { prisma } from "@/lib/prisma";
 import config from "@/lib/config";
 
 // Helper: check MuAPI and sync DB for a processing record
-async function syncProcessingRecord(record) {
-  const apiKey = config.ai.apiKey;
-  if (!apiKey || apiKey.includes("your_") || !record.requestId.startsWith("mock_")) {
-    try {
-      const pollRes = await fetch(
-        `https://api.muapi.ai/api/v1/predictions/${record.requestId}/result`,
-        { headers: { "x-api-key": apiKey } }
-      );
-      if (pollRes.ok) {
-        const pollJson = await pollRes.json();
-        const state = pollJson.status || pollJson.state;
-        if (state === "completed" || state === "succeeded") {
-          const outputs = pollJson.outputs || [];
-          const imageUrl = outputs[0] || pollJson.output;
-          if (imageUrl) {
-            return prisma.watermarkRemoval.update({
-              where: { id: record.id },
-              data: { status: "completed", resultImage: imageUrl },
-            });
-          }
-        } else if (state === "failed") {
+async function syncProcessingRecord(record, customApiKey = null) {
+  const apiKey = (customApiKey && customApiKey.trim().length > 0) ? customApiKey.trim() : config.ai.apiKey;
+  if (!apiKey || apiKey.includes("your_") || !record.requestId || record.requestId.startsWith("mock_")) {
+    return record;
+  }
+
+  try {
+    const pollRes = await fetch(
+      `https://api.muapi.ai/api/v1/predictions/${record.requestId}/result`,
+      { headers: { "x-api-key": apiKey } }
+    );
+    if (pollRes.ok) {
+      const pollJson = await pollRes.json();
+      const state = pollJson.status || pollJson.state;
+      if (state === "completed" || state === "succeeded") {
+        const outputs = pollJson.outputs || [];
+        const imageUrl = outputs[0] || pollJson.output;
+        if (imageUrl) {
           return prisma.watermarkRemoval.update({
             where: { id: record.id },
-            data: { status: "failed" },
+            data: { status: "completed", resultImage: imageUrl },
           });
         }
+      } else if (state === "failed") {
+        return prisma.watermarkRemoval.update({
+          where: { id: record.id },
+          data: { status: "failed" },
+        });
       }
-    } catch (err) {
-      console.error("Sync error for", record.id, err.message);
     }
+  } catch (err) {
+    console.error("Sync error for", record.id, err.message);
   }
   return record;
 }
@@ -49,6 +51,9 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
+    const headerApiKey = req.headers.get("x-custom-api-key");
+    const customApiKey = headerApiKey || session.user.customApiKey || null;
+
     // Single record fetch
     if (id) {
       let record = await prisma.watermarkRemoval.findFirst({
@@ -58,7 +63,7 @@ export async function GET(req) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
       }
       if (record.status === "processing") {
-        record = await syncProcessingRecord(record);
+        record = await syncProcessingRecord(record, customApiKey);
       }
       return NextResponse.json(record);
     }
@@ -72,7 +77,7 @@ export async function GET(req) {
     // Self-heal processing records
     const synced = await Promise.all(
       records.map((r) =>
-        r.status === "processing" ? syncProcessingRecord(r) : r
+        r.status === "processing" ? syncProcessingRecord(r, customApiKey) : r
       )
     );
 
