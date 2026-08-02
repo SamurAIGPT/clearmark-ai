@@ -17,6 +17,11 @@
 
 https://github.com/user-attachments/assets/0e9019c8-9a72-4d7e-8893-a45218dbeb52
 
+## Related Projects
+
+- [GPT Image 2 image-editing playground](https://muapi.ai/playground/gpt-image-2-image-to-image) — Try the model used for watermark removal and cleanup.
+- [MuAPI specialized apps docs](https://muapi.ai/docs/specialized-apps) — Background removal, erasing, and image-enhancement workflows.
+
 ## 🌐 Project Details
 
 **GitHub Repository:** [github.com/SamurAIGPT/clearmark-ai](https://github.com/SamurAIGPT/clearmark-ai)
